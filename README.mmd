@@ -386,6 +386,32 @@
 
 ##### 第三阶段
 
+###### 在此阶段，从各种来源收集了 200 万个视频片段，总时长 5000 小时，其中包括
+
+###### 来自 Pexels、Pixabay、Mixkit 等的免费授权视频。
+
+####### 使用PLLaVA为其余字幕添加字幕
+
+######## 与只能进行单帧/图像字幕的 LLaVA 相比，PLLaVA 是专门为视频字幕设计和训练的
+
+######## 加速版PLLaVA已在我们的tools/中发布。
+> mmd.emoticon=`baby_bottle`
+
+
+######### https://github\.com/hpcaitech/Open\-Sora/blob/main/tools/caption/README\.md\#pllava\-captioning
+
+######## 在实践中，我们使用预训练的 PLLaVA 13B 模型，并从每个视频中选择 4 帧生成字幕，空间池化形状为 2\*2。
+
+###### MiraData：一个包含长视频的高质量数据集，主要来自游戏和城市/风景探索。
+
+####### MiraData 和 Vript 有来自 GPT 的字幕
+
+###### Vript：一个密集注释的数据集。
+
+####### MiraData 和 Vript 有来自 GPT 的字幕
+
+###### 还有一些其他数据集。
+
 ## sora 1\.0技术报告
 
 ### 基于 注意力的 扩散模型
