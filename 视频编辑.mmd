@@ -28,6 +28,508 @@
 
 ### 综述论文
 
+#### 3\. 视频生成
+
+##### 通用文本到视频（T2V）生成（第 3\.1 节）
+
+###### 文本到视频（Text\-to\-Video，T2V）方法的发展仍处于早期阶段
+
+###### 3\.1\.1 Non\-diffusion T2V methods
+
+####### 扩散模型出现之前
+
+######## 早期工作主要基于GANs、VQ\-VAE 和自回归 Transformer 框架
+
+####### GODIVA
+
+######## 利用 VQ\-VAE 进行通用 T2V 任务的代表性工作
+
+######## 在 Howto100M 上进行了预训练
+
+######### 该数据集包含超过 100M 的视频文本对
+
+######### 展示出了出色的零样本性能
+
+####### 自回归 Transformer 方法
+
+######## 由于其显式密度建模和相对于 GANs 的稳定训练优势，成为主流的 T2V 任务方法
+
+######## CogVideo
+
+######### 利用预训练的 CogView2 作为其视频生成任务的骨干
+
+######### 扩展到了使用 Swin Attention 进行自回归视频生成，<br/>有效减轻了长序列的时间和空间开销
+
+######## Phenaki
+
+######### 引入了一个新颖的 C\-ViViT 骨干，用于可变长度的视频生成
+
+######## NUWA
+
+######### 基于自回归Transformer 的统一模型，用于 T2I、T2V 和视频预测任务
+
+######## MMVG
+
+######### 提出了一种有效的掩码策略，用于多个视频生成任务<br/>（T2V、视频预测和视频填充）。
+
+###### 3\.1\.2 Training\-based T2V Diffusion Methods
+
+####### 早期 T2V 探索：
+
+######## VDM
+
+######### 首个尝试设计用于视频生成的视频扩散模型的先驱
+
+######### 将传统的图像扩散 U\-Net 结构扩展为 3D U\-Net 结构
+
+########## 并采用图像和视频的联合训练
+
+######### 它采用的条件采样技术使其能够生成质量更高且持续时间更长的视频
+
+######### 作为 T2V 扩散模型的首次尝试，它还支持无条件生成和视频预测等任务
+
+######## Make\-A\-Video 
+
+######### 与需要成对的视频文本数据集的 VDM 不同
+
+######### 引入了一种新颖的范式。网络从成对的图像文本<br/>数据中学习视觉文本相关性
+
+######### 并从无监督的视频数据中捕获视频运动信息。
+
+########## 这种创新方法减少了对数据收集的依赖
+
+########## 从而实现了多样性和逼真性视频的生成。
+
+######### 通过使用多个超分辨率模型和插值网络，它实现了更高清晰度和帧率的生成视频。
+
+####### 时序建模探索：
+
+########  MagicVideo 
+
+######### 在之前的方法中，都是利用像素级的扩散
+
+######### 最早采用潜在扩散模型（Latent Diffusion Model，LDM）来进行潜在空间的 T2V 生成的工作之一
+
+######### 通过在低维潜在空间中利用扩散模型，它显著降低了计算复杂性，从而加快了处理速度
+
+######### 引入的逐帧轻量级 adaptor 对齐了图像和视频的分布
+> fillColor=`#FF0DF9`
+
+
+########## 使所提出的定向注意力（directed attention）能够更好地建模时间关系<br/>以确保视频的时序一致性。
+
+######## LVDM 
+
+######### 将 LDM 作为其骨干，利用分层框架来建模潜在空间。
+
+######### 通过采用掩码采样技术，该模型能够生成更长的视频。
+
+######### 结合了条件潜在扰动（Conditional Latent Perturbation）和<br/>无条件引导（Unconditional Guidance）等技术
+
+########## 以减轻自回归生成任务后期性能下降的问题
+
+######### 采用这种训练方法，它可以应用于视频预测任务，甚至生成包含数千帧的长视频
+
+######## ModelScope 
+
+######### 将空间\-时间卷积和注意力整合到 LDM 中，用于 T2V 任务
+
+######### 用了混合训练方法，使用LAION 和 WebVid，并作为一个开源基准方法
+
+########  Latent\-Shift 
+
+######### 先前的方法主要依赖于 1D 卷积或时间注意力来建立时间关系
+
+########## 专注于轻量级的时序建模
+
+######### 从 TSM 获得灵感，它在卷积模块中在相邻帧之间移动通道以进行时间建模
+
+########## 该模型在生成视频的同时保持了原始的 T2I 能力。
+
+####### 多阶段的 T2V 方法：
+
+########  Imagen Video
+
+######### 将成熟的 T2I 模型 Imagen 扩展到了视频生成任务
+
+######### 级联的视频扩散模型由七个子模型组成
+
+########## 其中一个专门用于基本视频生成
+
+########## 三个用于空间超分辨率，
+
+########## 另外三个用于时间超分辨率。
+
+######### 这些子模型一起构成了一个全面的三阶段训练流程
+
+######### 验证了在 T2I 训练中采用的许多训练技术的有效性
+
+########## 无分类器引导（classifier\-free guidance）
+
+########## 条件增强（conditioning augmentation）
+
+##########  v\-参数化
+
+######### 还利用渐进蒸馏技术（progressive distillation techniques）
+
+########## 加速视频扩散模型的采样时间。
+
+########## 其中介绍的多阶段训练技术已成为主流高清视频生成的有效策略。
+
+######## Video LDM 
+
+######### 训练了一个由三个训练阶段组成的 T2V 网络
+
+########## 包括关键帧 T2V 生成、视频帧插值和空间超分辨率模块
+
+######### 在空间层上添加了时间注意力层和 3D 卷积层，
+
+########## 在第一阶段生成关键帧
+
+########## 通过采用掩码采样方法
+
+########### 训练了一个帧插值模型
+
+########### 将短视频的关键帧扩展到更高的帧率
+
+########## 最后，采用视频超分辨率模型来增强分辨率
+
+######## LAVIE
+
+######### 采用了一个由三个阶段组成的级联视频扩散模型
+
+########## 基本的 T2V 阶段、时间插值阶段和视频超分辨率阶段。
+
+######### 它验证了联合图像和视频微调的过程可以产生高质量和有创意的结果
+
+######## Show\-1 
+
+######### 首次引入了基于像素（pixel\-based）和基于潜在（latent\-based）的扩散模型的融合
+
+######### 用于 T2V 生成。
+
+######### 其框架包括四个不同的阶段，
+
+########## 前三个在像素级低分辨率下运行：关键帧生成、帧插值和超分辨率。
+
+########## 像素级的阶段可以生成具有精确文本对齐的视频
+
+########## 第四阶段由一个潜在超分辨率模块组成，<br/>提供了一种成本有效的方式来增强视频分辨率。
+
+####### 噪声先验探索：
+
+########  VideoFusion
+
+######### 多数提到的方法通过扩散模型独立去噪每一帧
+
+######### 但 VideoFusion 通过考虑不同帧之间的内容冗余和时间相关性而脱颖而出
+
+######### 具体来说
+
+########## 它使用每帧共享的基础噪声和沿时间轴的残差噪声来分解扩散过程
+
+########## 这种噪声分解是通过两个共同训练的网络实现的
+
+########### 旨在确保在生成帧运动时的一致性，尽管它可能导致多样性有限
+
+########## 使用 T2I 骨干（如 DALLE\-2）来训练 T2V 模型可以加速收敛
+
+########## 但其文本嵌入可能面临理解长时序文本序列的挑战
+
+######## PYoCo 
+
+######### 在 T2V 任务中
+
+########## 直接扩展图像的噪声先验到视频可能会导致次优的结果
+
+########## 巧妙地设计了一个视频噪声先验并对 eDiff\-I 模型进行微调
+
+########### 用于视频生成
+
+########## 所提出的噪声先验涉及在视频内的不同帧之间采样相关的噪声
+
+########## 作者验证了所提出的混合和渐进噪声模型更适用于 T2V 任务。
+
+####### 数据集贡献：
+
+######## VideoFactory
+
+######### 注意到先前广泛使用的 WebVid 数据集存在低分辨率和水印的问题。
+
+######### 构建了一个大规模视频数据集，名为 HD\-VG\-130M
+
+########## 包括来自开放领域来源的 1\.3 亿个视频文本对
+
+########## 数据集是通过 BLIP\-2 字幕从 HD\-VILA 中收集的
+
+########### 具有高分辨率并且没有水印
+
+######### 引入了一种交换的交叉注意力机制，以促进时间和空间模块之间的交互
+
+########## 从而提高了时间关系建模的效果
+
+######### 在这个高清数据集上进行训练
+
+######### 该论文中提出的方法能够生成分辨率为（1376×768）的高分辨率视频
+
+######## VidRD 
+
+######### 引入了"复用和扩散"（Reuse and Diffuse）框架
+
+######### 该框架通过迭代使用原始的潜在表示并遵循以前的扩散过程
+
+########## 生成额外的帧
+
+######### 它在构建视频文本数据集时利用静态图像、长视频和短视频
+
+########## 对于静态图像，通过随机缩放或平移操作引入了动态方面
+
+########## 短视频使用 BLIP\-2 标注进行分类，而长视频首先进行分割，<br/>然后根据 MiniGPT\-4 进行标注以保留所需的视频片段
+
+########## 在视频文本数据集中构建多样的类别和分布被证明对提高视频生成的质量是有效的。
+
+####### 高效训练
+
+########  ED\-T2V
+
+######### 采用 LDM 作为其骨干
+
+########## 冻结了大部分参数以降低训练成本
+
+######### 引入了身份注意力和时间交叉注意力以确保时间上的一致性
+
+######### 这篇论文提出的方法成功降低了训练成本，同时保持了可比较的 T2V 生成性能
+
+######## SimDA
+
+######### 设计了一种参数高效的 T2V 任务训练方法
+
+######### 通过保持 T2I 模型的参数不变来实现。
+
+######### 引入了一个轻量级的空间 adapter，用于将视觉信息转移到 T2V 学习中。
+
+######### 它还引入了一个时间 adapter，用于在较低的特征维度中建模时间关系。
+
+######### 提出的潜在位移注意力有助于保持视频的一致性。
+
+######### 轻量级的架构能够加速推断，并使其适用于视频编辑任务。
+
+####### 个性化视频生成：
+
+######## 个性化视频生成通常指的是创建根据特定主题或风格定制的视频，<br/>解决了为了满足个人偏好或特征而生成定制视频的问题。
+
+######## AnimateDiff 
+
+######### 注意到了 LoRA 和 Dreambooth 在个性化 T2I 模型方面的成功，<br/>并旨在将它们的有效性扩展到视频动画
+
+######### 此外，作者的目标是训练一个可以适应生成各种个性化视频的模型，<br/>而无需反复在视频数据集上重新训练。
+
+######### 这包括使用 T2I 模型作为基础生成器，并添加一个运动模块来学习运动动态。<br/>在推理时，个性化 T2I 模型可以替代基础 T2I 权重，实现个性化视频生成。
+
+####### 伪影去除：
+
+######## 为解决T2V生成的视频中出现的闪烁和伪像问题
+
+######### DSDN
+
+########## 引入了一个双流扩散模型，一个用于视频内容，另一个用于运动
+
+########## 可以保持内容和运动之间的强对齐性。通过将视频生成过程分解为内容和运动组件，<br/>可以生成具有较少闪烁的连续视频
+
+######### VideoGen
+
+########## 首次利用 T2I 模型基于文本提示生成图像，这些图像作为引导视频生成的参考图像
+
+########## 引入了一个高效的级联潜在扩散模块，采用基于流的时间上采样步骤以提高时间分辨率。
+
+########## 与以前的方法相比
+
+########### 引入参考图像提高了视觉保真度并减少了伪像，使模型能够更多地专注于学习视频动态。
+
+####### 复杂动力学建模
+
+######## 面临着对复杂动态的建模挑战，特别是涉及到动作连贯性的中断
+
+######### 为了解决这个问题
+
+########## Dysen\-VDM 
+
+########### 提出了一种将文本信息转化为动态场景图的方法
+
+########### 通过利用大语言模型（LLM），Dysen\-VDM 从输入文本中识别关键行动，<br/>并按时间顺序排列它们，丰富场景的相关描述细节
+
+########### 此外，该模型受益于对 LLM 的上下文学习，赋予其强大的时空建模能力。
+
+########### 这种方法在合成复杂动作方面表现出卓越的优势
+
+########## VideoDirGPT 
+
+########### 利用LLM来规划视频内容的生成。
+
+############ 对于给定的文本输入，通过 GPT\-4 将其扩展为视频计划，包括场景描述、<br/>实体及其布局，以及实体在背景中的分布
+
+############ 随后，该模型通过显式控制布局生成相应的视频。
+
+############ 这种方法在复杂动态视频生成的布局和动作控制方面表现出明显的优势。
+
+####### 特定领域的 T2V 生成：
+
+########  Video\-Adapter 
+
+######### 引入了一种新颖的设置，将预训练的通用 T2V 模型转移到领域特定的 T2V 任务中
+
+######### 通过将领域特定的视频分布分解为预先训练的噪声和少量训练组件，它大大降低了转移训练的成本
+
+######### 这种方法在 Ego4D 和 Bridge Data 场景的 T2V 生成中的有效性得到了验证
+
+######## NUWA\-XL
+
+######### 采用了一种粗到细的生成范式，有助于并行视频生成
+
+######### 它首先采用全局扩散来生成关键帧，然后利用局部扩散模型在两帧之间进行插值
+
+######### 这种方法使得可以创建长达 3376 帧的视频，从而为动画生成设立了一个基准。
+
+######### 这项工作专注于卡通视频生成领域，利用其技术来制作持续几分钟的卡通视频
+
+######## Text2Performer
+
+######### 将以人为中心的视频分解为外观和动作表示。
+
+########## 使用 VQVAE 的潜在空间对自然人类视频进行非监督训练，以解耦外观和姿势表示。随后
+
+########## 它使用连续的 VQ\-diffuser 来采样连续的姿势嵌入
+
+########## 最后，作者在姿势嵌入的时空域上采用了一种动作感知的掩码策略，以增强时间相关性。
+
+###### 3\.1\.3 Training\-free T2V Diffusion Methods
+
+####### 通过开发无需训练的 T2V 方法来减少昂贵的训练成本
+
+########  
+> mmd.image=`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`
+
+
+####### Text2Video\-Zero
+
+######## 利用了预训练的 T2I 模型 Stable Diffusion 来进行视频合成
+
+######## 为了保持不同帧之间的一致性，它在每一帧和第一帧之间执行交叉注意力机制
+
+######## 它通过修改潜在码本的采样方法来丰富运动动态。
+
+######## 还可以与条件生成和编辑技术（如 ControlNet 和 InstructPix2Pix）结合使用，实现对视频的受控生成
+
+####### DirecT2V
+
+########  引入了大型语言模型（LLM），以基于单个抽象用户提示生成逐帧描述
+
+######## LLM 导演用于将用户输入分解为帧级别的描述
+
+######## 使用了一种新颖的值映射和 dual\-softmax 过滤方法。
+
+######### 保持帧之间的连续性
+
+####### Free\-Bloom
+
+######## 提出了一系列逆向过程增强方法，包括联合噪声采样、步骤感知的注意力转移和双通道插值
+
+######## 实验结果表明，这些修改增强了零样本视频生成能力
+
+####### LVD 
+
+######## 为了处理复杂的时空提示
+
+######### 利用大型语言模型（LLM）生成动态场景布局
+
+######### 使用这些布局来引导视频生成。
+
+######## 它的方法无需训练，通过根据布局调整注意力图，<br/>来引导视频扩散模型，从而实现复杂动态视频的生成
+
+####### DiffSynth
+
+######## 提出了一种迭代内的潜在抑制闪烁框架和视频抑制闪烁算法，以减轻闪烁并生成连贯的视频
+
+######## 它可以应用于各种领域，包括视频风格化和 3D 渲染。
+
+##### 有条件的视频生成（第 3\.2 节）
+
+###### 关注基于其他模态条件（例如姿势、声音和深度）的视频生成
+
+###### 3\.2\.1 Pose\-guided Video Generation
+
+####### Follow Your Pose
+
+######## 提出了一个由姿势和文本控制驱动的视频生成模型
+
+######## 用了两阶段的训练过程，利用图像\-姿势对和无姿势的视频
+
+######### 在第一阶段
+
+########## 使用（图像，姿势）对对 T2I \(Text\-to\-Image\) <br/>模型进行微调，以实现姿势控制的生成
+
+######### 在第二阶段
+
+########## 模型利用未标记的视频来学习时间建模，<br/>通过整合时间注意力和跨帧注意力机制
+
+######### 这两阶段的训练使模型具备了姿势控制和时间建模的能力
+
+####### DreamPose
+
+######## 构建了一个双路的 CLIP\-VAE 图像编码器和 adapter 模块
+
+######## 以替代 LDM 中的原始 CLIP 文本编码器作为条件组件
+
+######## 在给定单个人类图像和一个姿势序列的情况下
+
+######### 基于提供的姿势信息生成相应的人体姿势视频
+
+####### Dancing Avatar
+
+######## 专注于合成人类舞蹈视频
+
+######## 它利用一个 T2I 模型以自回归方式生成视频的每一帧
+
+######## 为了确保整个视频的一致性，它使用了一个帧对齐模块，<br/>结合了来自 ChatGPT 的见解，以增强相邻帧之间的连贯性。
+
+######## 还利用 OpenPose ControlNet 来实现根据姿势生成高质量人体视频的能力
+
+####### Disco 
+
+######## 解决了一个称为参考人类舞蹈生成的新颖问题设置。
+
+######## 它利用了 ControlNet、Grounded\-SAM 和 OpenPose 来进行背景控制、前景提取和姿势骨架提取
+
+######## 还使用了大规模图像数据集进行人类属性的预训练。通过结合这些训练步骤，<br/>Disco 为人类特定的视频生成任务奠定了坚实的基础。
+
+###### 3\.2\.2 Motion\-guided Video Generation
+
+####### MCDiff
+
+######## 首个考虑运动作为视频合成控制条件的先驱
+
+######## 该方法涉及提供视频的第一帧以及一系列笔画运动。
+
+######## 首先，使用流补全模型基于稀疏笔画运动控制来预测稠密视频运动
+
+######## 随后，该模型采用自回归方法，利用稠密运动图来预测随后的帧，最终合成完整的视频
+
+####### DragNUWA
+
+######## 同时引入文本、图像和轨迹信息，以从语义、<br/>空间和时间的角度提供对视频内容的精细控制
+
+######## 为了进一步解决以前工作中开放域轨迹控制的不足，
+
+######### 提出了一个轨迹采样器 \(Trajectory Sampler, TS\)，以实现对任意轨迹的开放领域控制
+
+######### ，一个多尺度融合 \(Multiscale Fusion, MF\)，以控制不同粒度的轨迹
+
+######### 以及一种自适应训练 \(Adaptive Training, AT\) 策略，以生成遵循轨迹的一致视频。
+
+##### 无条件视频生成（第 3\.3 节）
+
+##### 视频补全（第 3\.4 节）
+
 #### 4 视频编辑
 
 ##### 目标
