@@ -134,25 +134,31 @@ class ResBlock(nn.Module):
         self.use_conv_shortcut = use_conv_shortcut
 
         # SCH: MAGVIT uses GroupNorm by default
+        # 组正则化， 组内计算均值和方差，正则化组内的数值
         self.norm1 = nn.GroupNorm(num_groups, in_channels)
+        # CausalConv3d 就是 conv_fn通过参数 dict指针传递
         self.conv1 = conv_fn(in_channels, self.filters, kernel_size=(3, 3, 3), bias=False)
         self.norm2 = nn.GroupNorm(num_groups, self.filters)
         self.conv2 = conv_fn(self.filters, self.filters, kernel_size=(3, 3, 3), bias=False)
+
         if in_channels != filters:
             if self.use_conv_shortcut:
                 self.conv3 = conv_fn(in_channels, self.filters, kernel_size=(3, 3, 3), bias=False)
             else:
+                # 直接路径，恒等映射，输出维度与输入维度一致：缓解梯度消失问题、保持信息传递：
                 self.conv3 = conv_fn(in_channels, self.filters, kernel_size=(1, 1, 1), bias=False)
 
     def forward(self, x):
         residual = x
         x = self.norm1(x)
+        # SiLU门控激活函数
         x = self.activate(x)
         x = self.conv1(x)
         x = self.norm2(x)
         x = self.activate(x)
         x = self.conv2(x)
         if self.in_channels != self.filters:  # SCH: ResBlock X->Y
+            # conv3 对残差 x进行 卷积操作 还是恒等映射
             residual = self.conv3(residual)
         return x + residual
 
@@ -234,6 +240,7 @@ class Encoder(nn.Module):
                     prev_filters = filters  # update in_channels
                 else:
                     # if no t downsample, don't add since this does nothing for pipeline models
+                    # # Identity层的作用是在网络中传递输入而不进行任何变换，常用于残差网络中的跳过连接
                     self.conv_blocks.append(nn.Identity(prev_filters))  # Identity
                     prev_filters = filters  # update in_channels
 
@@ -249,6 +256,7 @@ class Encoder(nn.Module):
         self.conv2 = self.conv_fn(prev_filters, self.embedding_dim, kernel_size=(1, 1, 1), padding="same")
 
     def forward(self, x):
+        # 3d卷积
         x = self.conv_in(x)
 
         for i in range(self.num_blocks):
@@ -371,6 +379,11 @@ class Decoder(nn.Module):
 
 @MODELS.register_module()
 class VAE_Temporal(nn.Module):
+    """
+    定义一个处理时间数据的变分自编码器(VAE)类。
+    这个类继承自nn.Module，包含了编码器和解码器，用于处理三维数据（如视频），并使用对角高斯分布作为潜在空间的后验分布。
+    """
+
     def __init__(
         self,
         in_out_channels=4,
@@ -383,6 +396,20 @@ class VAE_Temporal(nn.Module):
         num_groups=32,  # for nn.GroupNorm
         activation_fn="swish",
     ):
+        """
+        初始化VAE_Temporal类。
+
+        参数:
+        - in_out_channels (int): 输入和输出的通道数。
+        - latent_embed_dim (int): 潜在空间的维度。
+        - embed_dim (int): 嵌入空间的维度。
+        - filters (int): 卷积层的滤波器数量。
+        - num_res_blocks (int): 残差块的数量。
+        - channel_multipliers (tuple): 通道倍增器的元组，用于不同尺度的卷积层。
+        - temporal_downsample (tuple): 时间下采样的元组，表示是否在每个尺度上进行时间维度的下采样。
+        - num_groups (int): 组归一化的组数。
+        - activation_fn (str): 激活函数的名称。
+        """
         super().__init__()
 
         self.time_downsample_factor = 2 ** sum(temporal_downsample)
@@ -417,6 +444,15 @@ class VAE_Temporal(nn.Module):
         )
 
     def get_latent_size(self, input_size):
+        """
+        根据输入尺寸计算潜在空间的尺寸。
+
+        参数:
+        - input_size (tuple): 输入数据的尺寸。
+
+        返回:
+        - latent_size (list): 潜在空间的尺寸。
+        """
         latent_size = []
         for i in range(3):
             if input_size[i] is None:
@@ -442,10 +478,10 @@ class VAE_Temporal(nn.Module):
         最后，通过全连接层对编码后的特征进行处理，生成高斯分布的参数，用于构建对角高斯分布的后验分布，并将其返回。
 
         参数:
-        x (Tensor): 输入的数据张量。
+        - x (Tensor): 输入的数据张量。
 
         返回:
-        DiagonalGaussianDistribution: 生成的对角高斯分布的后验分布。
+        - DiagonalGaussianDistribution: 生成的对角高斯分布的后验分布。
         """
         # 计算时间维度的填充量，以确保时间维度的大小能够被时间下采样因子整除，nt = T/f
         time_padding = (
@@ -464,11 +500,25 @@ class VAE_Temporal(nn.Module):
         return posterior
 
     def decode(self, z, num_frames=None):
+        """
+        对潜在变量进行解码。
+
+        参数:
+        - z (Tensor): 潜在变量的张量。
+        - num_frames (int): 帧的数量，用于计算时间维度的填充量。
+
+        返回:
+        - x (Tensor): 解码后的数据张量。
+        """
+        # 计算时间维度的填充量
+        # 如果帧数能被时间维度的下采样因子整除，则不需要额外的填充，填充量为0
+        # 否则，计算需要多少帧才能达到下一个最接近的、能被时间维度下采样因子整除的帧数
         time_padding = (
             0
             if (num_frames % self.time_downsample_factor == 0)
             else self.time_downsample_factor - num_frames % self.time_downsample_factor
         )
+
         z = self.post_quant_conv(z)
         x = self.decoder(z)
         x = x[:, :, time_padding:]
@@ -479,6 +529,18 @@ class VAE_Temporal(nn.Module):
     # 这样的随机化处理使得模型中的所有操作都变成了可微分的，从而可以使用基于梯度的优化方法进行训练
     # sample_posterior就是 对 encoder的 输出进行重参数化（实现从latent采样），使得 出现玄月
     def forward(self, x, sample_posterior=True):
+        """
+        VAE_Temporal类的前向传播函数。
+
+        参数:
+        - x (Tensor): 输入的数据张量。
+        - sample_posterior (bool): 是否从后验分布中采样。
+
+        返回:
+        - recon_video (Tensor): 重建的视频数据张量。
+        - posterior (DiagonalGaussianDistribution): 对角高斯分布的后验分布。
+        - z (Tensor): 潜在变量的张量。
+        """
         posterior = self.encode(x)
         if sample_posterior:
             z = posterior.sample()

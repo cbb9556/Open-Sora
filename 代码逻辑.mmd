@@ -166,8 +166,6 @@
 
 ############### 包含 300M 个参数
 
-############  
-
 ############     self\.spatial\_vae = build\_module\(config\.vae\_2d, MODELS\)<br/>        self\.temporal\_vae = build\_module\(config\.vae\_temporal, MODELS\)
 > align=`left`
 
@@ -273,6 +271,44 @@
 ###################### 也就是 codebook 每个token 没有 D 维了， 每个token都变成一个整数
 
 ###################### 对于 vqvae的 
+
+################## VAE\_Temporal的架构
+
+################### encode
+
+#################### \# 计算时间维度的填充量，以确保时间维度的大小能够被时间下采样因子整除
+
+#####################  \# 在时间维度上对输入数据进行相应的填充
+
+#################### encoded\_feature = self\.encoder\(x\)
+
+##################### self\.encoder = Encoder\(
+
+###################### 架构为
+
+####################### \# first layer conv<br/>采用3D空洞卷积 self\.conv\_in
+
+########################         \# first layer conv<br/>        self\.conv\_in = self\.conv\_fn\(<br/>            in\_out\_channels,<br/>            filters,<br/>            kernel\_size=\(3, 3, 3\),<br/>            bias=False,<br/>        \)
+> align=`left`
+
+
+####################### block\_res\_blocks
+
+####################### ResBlock
+
+########################     def forward\(self, x\):<br/>        residual = x<br/>        x = self\.norm1\(x\)<br/>        \# SiLU门控激活函数<br/>        x = self\.activate\(x\)<br/>        x = self\.conv1\(x\)<br/>        x = self\.norm2\(x\)<br/>        x = self\.activate\(x\)<br/>        x = self\.conv2\(x\)<br/>        if self\.in\_channels \!= self\.filters:  \# SCH: ResBlock X\-\>Y<br/>            \# conv3 对残差 x进行 卷积操作 还是恒等映射<br/>            residual = self\.conv3\(residual\)<br/>        return x \+ residual
+> align=`left`
+
+
+######################### 组正则化
+
+######################### 3d卷积
+
+######################### silu激活
+
+######################### 卷积快捷方式
+
+################# 详细架构 见  magvit的 3d\-vae\.ppt
 
 ######## builder 就是 MODELS
 
