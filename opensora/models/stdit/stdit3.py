@@ -100,6 +100,7 @@ class STDiT3Block(nn.Module):
     ):
         # prepare modulate parameters
         B, N, C = x.shape
+        # s-adaln 缩放和偏移
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
             self.scale_shift_table[None] + t.reshape(B, 6, -1)
         ).chunk(6, dim=1)
@@ -114,7 +115,7 @@ class STDiT3Block(nn.Module):
             x_m_zero = t2i_modulate(self.norm1(x), shift_msa_zero, scale_msa_zero)
             x_m = self.t_mask_select(x_mask, x_m, x_m_zero, T, S)
 
-        # attention
+        # MHA attention
         if self.temporal:
             x_m = rearrange(x_m, "B (T S) C -> (B S) T C", T=T, S=S)
             x_m = self.attn(x_m)
@@ -133,10 +134,10 @@ class STDiT3Block(nn.Module):
         # residual
         x = x + self.drop_path(x_m_s)
 
-        # cross attention
+        # cross attention，将 T5的 text 注入到 注意力
         x = x + self.cross_attn(x, y, mask)
 
-        # modulate (MLP)
+        # modulate (MLP) # 从timm库中导入vision_transformer模块下的Mlp类，该类通常实现了一个PointWise前馈神经网络(FFN)层
         x_m = t2i_modulate(self.norm2(x), shift_mlp, scale_mlp)
         if x_mask is not None:
             x_m_zero = t2i_modulate(self.norm2(x), shift_mlp_zero, scale_mlp_zero)
@@ -264,7 +265,7 @@ class STDiT3(PreTrainedModel):
                     enable_layernorm_kernel=config.enable_layernorm_kernel,
                     enable_sequence_parallelism=config.enable_sequence_parallelism,
                 )
-                for i in range(config.depth)
+                for i in range(config.depth) # 28个 时间注意力 连续相连
             ]
         )
 
@@ -285,7 +286,7 @@ class STDiT3(PreTrainedModel):
                     temporal=True,
                     rope=self.rope.rotate_queries_or_keys,
                 )
-                for i in range(config.depth)
+                for i in range(config.depth) # 28个 空间注意力 连续相连
             ]
         )
 
@@ -418,7 +419,7 @@ class STDiT3(PreTrainedModel):
 
         x = rearrange(x, "B T S C -> B (T S) C", T=T, S=S)
 
-        # === blocks ===
+        # === blocks === 时间注意力 和 空间注意力
         for spatial_block, temporal_block in zip(self.spatial_blocks, self.temporal_blocks):
             x = auto_grad_checkpoint(spatial_block, x, y, t_mlp, y_lens, x_mask, t0_mlp, T, S)
             x = auto_grad_checkpoint(temporal_block, x, y, t_mlp, y_lens, x_mask, t0_mlp, T, S)

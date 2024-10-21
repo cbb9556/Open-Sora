@@ -138,7 +138,7 @@ def main():
     # == build diffusion model ==
     model = (
         build_module(
-            cfg.model,
+            cfg.model, # STDiT3-XL/2 时间 和 空间注意力
             MODELS,
             input_size=latent_size,
             in_channels=vae_out_channels,
@@ -193,7 +193,8 @@ def main():
     # =======================================================
     logger.info("Preparing for distributed training...")
     # == boosting ==
-    # NOTE: we set dtype first to make initialization of model consistent with the dtype; then reset it to the fp32 as we make diffusion scheduler in fp32
+    # NOTE: we set dtype first to make initialization of model consistent with the dtype;
+    # then reset it to the fp32 as we make diffusion scheduler in fp32
     torch.set_default_dtype(dtype)
     model, optimizer, _, dataloader, lr_scheduler = booster.boost(
         model=model,

@@ -747,16 +747,31 @@ class GaussianDiffusion:
                  Some mean or variance settings may also have other keys.
         """
         # sample timestep
+        # 生成一个随机张量t，其元素从0到num_timesteps（不包括num_timesteps）之间的整数均匀分布
+        # 这里的目的是为每一批数据中的每个样本选择一个随机的时间步长
+        # 这个时间步长用于在去噪过程中确定噪声添加的程度
+        # x_start.shape[0]表示批次大小，即当前批次中样本的数量
+        # device=x_start.device确保生成的张量t 与 x_start在相同的设备（CPU或GPU）上
         t = torch.randint(0, self.num_timesteps, (x_start.shape[0],), device=x_start.device)
 
         if model_kwargs is None:
             model_kwargs = {}
+
+        # 如果noise参数未被提供（即为None），则使用与x_start相同形状的正态分布随机数初始化noise
         if noise is None:
             noise = torch.randn_like(x_start)
+
+        # 对起始数据x_start进行t时刻的噪声采样，得到x_t
+        # 此步骤是扩散模型中前向扩散过程的一部分，用于在训练时模拟数据的逐步噪声化
         x_t = self.q_sample(x_start, t, noise=noise)
+
+        # 如果提供了mask，则执行以下操作
         if mask is not None:
+            # 创建一个与t形状相同且全为0的张量
             t0 = torch.zeros_like(t)
+            # 使用给定的x_start, t0和noise生成x_t0样本
             x_t0 = self.q_sample(x_start, t0, noise=noise)
+            # 根据mask选择x_t或x_t0的值，以处理部分数据
             x_t = torch.where(mask[:, None, :, None, None], x_t, x_t0)
 
         terms = {}
