@@ -412,6 +412,12 @@
 
 ############### \# modulate \(MLP\) \# 从timm库中导入vision\_transformer模块下的Mlp类，该类通常实现了一个PointWise前馈神经网络\(FFN\)层<br/>        x\_m = t2i\_modulate\(self\.norm2\(x\), shift\_mlp, scale\_mlp\)
 
+############## for i in range\(config\.depth\) 
+
+############### \# 28个 时间注意力 连续相连
+
+################ 每个 时间注意力 中 包含 交叉注意力、 pointwise
+
 ############ x = auto\_grad\_checkpoint\(temporal\_block, x, y, t\_mlp, y\_lens, x\_mask, t0\_mlp, T, S\)
 
 ############# self\.temporal\_blocks = nn\.ModuleList\(<br/>            \[<br/>                STDiT3Block\(
@@ -431,6 +437,10 @@
 ############### \# cross attention，将 T5的 text 注入到 注意力<br/>        x = x \+ self\.cross\_attn\(x, y, mask\)
 
 ############### \# modulate \(MLP\) \# 从timm库中导入vision\_transformer模块下的Mlp类，该类通常实现了一个PointWise前馈神经网络\(FFN\)层<br/>        x\_m = t2i\_modulate\(self\.norm2\(x\), shift\_mlp, scale\_mlp\)
+
+############## for i in range\(config\.depth\) 
+
+############### \# 28个 空间注意力 连续相连
 
 ##### loss函数
 
