@@ -33,39 +33,86 @@ def exists(v):
 
 
 class CausalConv3d(nn.Module):
+    """
+    3D 因果卷积层。
+
+    该层通过对输入数据在时间维度上进行特定的填充，确保在时刻 t 的输出仅依赖于时刻 t 及之前的输入，
+    实现单向依赖性。这在处理序列数据时特别有用，例如视频中的帧序列。
+
+    参数:
+    - chan_in (int): 输入通道数。
+    - chan_out (int): 输出通道数。
+    - kernel_size (int | Tuple[int, int, int]): 卷积核的大小，可以是整数或包含三个整数的元组，
+      分别表示时间、高度和宽度维度的卷积核大小。
+    - pad_mode (str, optional): 填充模式，默认为 'constant'，表示用零填充。
+    - strides (Tuple[int, int, int], optional): 步幅大小，默认为 None，表示使用卷积层的默认步幅。
+    - **kwargs: 其他传递给 nn.Conv3d 的参数。
+
+    注意:
+    - 该类继承自 nn.Module，是 PyTorch 的 3D 卷积层的包装。
+    - 使用时，输入数据应具有形状 (batch_size, channels, time, height, width)。
+    """
+
     def __init__(
-        self,
-        chan_in,
-        chan_out,
-        kernel_size: Union[int, Tuple[int, int, int]],
-        pad_mode="constant",
-        strides=None,  # allow custom stride
-        **kwargs,
+            self,
+            chan_in,
+            chan_out,
+            kernel_size: Union[int, Tuple[int, int, int]],
+            pad_mode="constant",
+            strides=None,  # allow custom stride
+            **kwargs,
     ):
         super().__init__()
+        # 将 kernel_size 转换为三元组形式
         kernel_size = cast_tuple(kernel_size, 3)
 
+        # 分别获取时间、高度和宽度维度的卷积核大小
         time_kernel_size, height_kernel_size, width_kernel_size = kernel_size
 
+        # 确保高度和宽度维度的卷积核大小为奇数
         assert is_odd(height_kernel_size) and is_odd(width_kernel_size)
 
+        # 获取膨胀率，默认为 1，感受野：随着膨胀率的增加，卷积核能够覆盖更大的输入区域，从而增加其感受野
+        # 空洞卷积
         dilation = kwargs.pop("dilation", 1)
+        # 获取步幅，默认为 1
         stride = strides[0] if strides is not None else kwargs.pop("stride", 1)
 
         self.pad_mode = pad_mode
+
+        # 计算在时间维度上的填充量
         time_pad = dilation * (time_kernel_size - 1) + (1 - stride)
+        # 计算在高度和宽度维度上的填充量
         height_pad = height_kernel_size // 2
         width_pad = width_kernel_size // 2
 
         self.time_pad = time_pad
-        self.time_causal_padding = (width_pad, width_pad, height_pad, height_pad, time_pad, 0)
+        # 定义时间因果填充，确保输出仅依赖于当前及之前的输入
+        self.time_causal_padding = (width_pad, width_pad,
+                                    height_pad, height_pad, time_pad, 0)
 
+        # 设置卷积层的步幅和膨胀率
         stride = strides if strides is not None else (stride, 1, 1)
         dilation = (dilation, 1, 1)
+
+        # 初始化卷积层，3d卷积
         self.conv = nn.Conv3d(chan_in, chan_out, kernel_size, stride=stride, dilation=dilation, **kwargs)
 
     def forward(self, x):
+        """
+        前向传播函数。
+
+        对输入数据进行填充，然后应用卷积操作。
+
+        参数:
+        - x (Tensor): 输入张量，形状为 (batch_size, channels, time, height, width)。
+
+        返回:
+        - Tensor: 经过因果卷积后的输出张量。
+        """
+        # 对输入数据进行填充
         x = F.pad(x, self.time_causal_padding, mode=self.pad_mode)
+        # 应用卷积操作
         x = self.conv(x)
         return x
 
@@ -343,7 +390,8 @@ class VAE_Temporal(nn.Module):
         self.patch_size = (self.time_downsample_factor, 1, 1)
         self.out_channels = in_out_channels
 
-        # NOTE: following MAGVIT, conv in bias=False in encoder first conv
+        # NOTE: following cc, conv in bias=False in encoder first conv
+        # 对于 3D VAE，我们采用Magvit-v2中的 VAE 结构
         self.encoder = Encoder(
             in_out_channels=in_out_channels,
             latent_embed_dim=latent_embed_dim * 2,
@@ -386,14 +434,32 @@ class VAE_Temporal(nn.Module):
         return latent_size
 
     def encode(self, x):
+        """
+        对输入数据进行编码。
+
+        此函数首先根据时间维度的下采样因子计算需要在时间维度上填充的量，以确保时间维度的大小能够被下采样因子整除。
+        然后在时间维度上对输入数据进行相应的填充。接着，使用编码器对填充后的数据进行编码，生成编码后的特征。
+        最后，通过全连接层对编码后的特征进行处理，生成高斯分布的参数，用于构建对角高斯分布的后验分布，并将其返回。
+
+        参数:
+        x (Tensor): 输入的数据张量。
+
+        返回:
+        DiagonalGaussianDistribution: 生成的对角高斯分布的后验分布。
+        """
+        # 计算时间维度的填充量，以确保时间维度的大小能够被时间下采样因子整除，nt = T/f
         time_padding = (
             0
             if (x.shape[2] % self.time_downsample_factor == 0)
             else self.time_downsample_factor - x.shape[2] % self.time_downsample_factor
         )
+        # 在时间维度上对输入数据进行相应的填充
         x = pad_at_dim(x, (time_padding, 0), dim=2)
+        # 使用编码器对填充后的数据进行编码，生成编码后的特征
         encoded_feature = self.encoder(x)
+        # 通过全连接层对编码后的特征进行处理，生成高斯分布的参数
         moments = self.quant_conv(encoded_feature).to(x.dtype)
+        # 使用生成的高斯分布参数构建对角高斯分布的后验分布，并将其返回
         posterior = DiagonalGaussianDistribution(moments)
         return posterior
 
@@ -408,6 +474,10 @@ class VAE_Temporal(nn.Module):
         x = x[:, :, time_padding:]
         return x
 
+    # 在 VAE 的重参数化技巧中，通过引入外部噪声源 ϵ，潜在变量
+    # z 通过一个确定性的函数从均值 μ、方差 σ 和 ϵ 计算得到，即 z = μ + σ ⊙ ϵ。
+    # 这样的随机化处理使得模型中的所有操作都变成了可微分的，从而可以使用基于梯度的优化方法进行训练
+    # sample_posterior就是 对 encoder的 输出进行重参数化（实现从latent采样），使得 出现玄月
     def forward(self, x, sample_posterior=True):
         posterior = self.encode(x)
         if sample_posterior:

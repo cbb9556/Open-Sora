@@ -36,6 +36,9 @@ class VideoAutoencoderKL(nn.Module):
     def encode(self, x):
         # x: (B, C, T, H, W)
         B = x.shape[0]
+        # 重新排列张量x的维度，将其从原始的5D张量（批大小B、通道数C、时间序列长度T、高度H、宽度W）
+        # 转换为一个4D张量，其中批大小和时间序列长度被合并到一起 (RGB * H*W)，以便于后续处理。
+        # "2 2 2" -> "(2,2) 2 = 4 2"  [[[1,2],[3,4]],[[5,6],[7,8]]]] -> [[[1,2],[3,4]],[[5,6],[7,8]]]
         x = rearrange(x, "B C T H W -> (B T) C H W")
 
         if self.micro_batch_size is None:
@@ -46,6 +49,8 @@ class VideoAutoencoderKL(nn.Module):
             x_out = []
             for i in range(0, x.shape[0], bs):
                 x_bs = x[i : i + bs]
+                # 将输入数据x_bs通过模块的encode方法进行编码，得到潜在分布
+                # 然后从该潜在分布中采样，并将结果乘以scaling_factor
                 x_bs = self.module.encode(x_bs).latent_dist.sample().mul_(self.scaling_factor)
                 x_out.append(x_bs)
             x = torch.cat(x_out, dim=0)
