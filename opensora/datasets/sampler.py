@@ -58,12 +58,12 @@ class StatefulDistributedSampler(DistributedSampler):
         self.__dict__.update(state_dict)
 
 
-class VariableVideoBatchSampler(DistributedSampler):
+class VariableVideoBatchSampler(DistributedSampler): #继承自分布式采样器
     def __init__(
         self,
         dataset: VariableVideoTextDataset,
         bucket_config: dict,
-        num_replicas: Optional[int] = None,
+        num_replicas: Optional[int] = None, # 这表示 num_replicas 参数可以是一个整数，也可以是 None
         rank: Optional[int] = None,
         shuffle: bool = True,
         seed: int = 0,
@@ -79,7 +79,6 @@ class VariableVideoBatchSampler(DistributedSampler):
         self.verbose = verbose
         self.last_micro_batch_access_index = 0
         self.approximate_num_batch = None
-
         self._get_num_batch_cached_bucket_sample_dict = None
         self.num_bucket_build_workers = num_bucket_build_workers
 

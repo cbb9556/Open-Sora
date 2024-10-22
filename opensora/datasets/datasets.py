@@ -25,7 +25,7 @@ class VideoTextDataset(torch.utils.data.Dataset):
         temporal_sample (callable): Sample the target length of a video.
     """
 
-    def __init__(
+    def __init__( # 需要重写的函数
         self,
         data_path=None,
         num_frames=16,
@@ -62,7 +62,7 @@ class VideoTextDataset(torch.utils.data.Dataset):
             assert ext.lower() in IMG_EXTENSIONS, f"Unsupported file format: {ext}"
             return "image"
 
-    def getitem(self, index):
+    def getitem(self, index): #返回，每个视频、文本对
         sample = self.data.iloc[index]
         path = sample["path"]
         file_type = self.get_type(path)

@@ -43,6 +43,7 @@ def main():
 
     # == device and dtype ==
     assert torch.cuda.is_available(), "Training currently requires at least one GPU."
+
     cfg_dtype = cfg.get("dtype", "bf16")
     assert cfg_dtype in ["fp16", "bf16"], f"Unknown mixed precision {cfg_dtype}"
     dtype = to_torch_dtype(cfg.get("dtype", "bf16"))
@@ -50,29 +51,58 @@ def main():
     # == colossalai init distributed training ==
     # NOTE: A very large timeout is set to avoid some processes exit early
     dist.init_process_group(backend="nccl", timeout=timedelta(hours=24))
+    # 根据当前进程的排名设置CUDA设备
     torch.cuda.set_device(dist.get_rank() % torch.cuda.device_count())
+
+    # 设置随机种子以保证实验的可重复性
     set_seed(cfg.get("seed", 1024))
+
+    # 初始化分布式协调器，用于管理分布式训练或推理过程
     coordinator = DistCoordinator()
+
+    # 获取当前设备信息，用于后续的操作或计算
     device = get_current_device()
 
     # == init exp_dir ==
+    # 定义实验的工作空间，初始化实验名称和目录
     exp_name, exp_dir = define_experiment_workspace(cfg)
+
+    # 阻塞所有工作线程，确保在主协调器进行下一步操作时，所有工作线程都处于等待状态
     coordinator.block_all()
+
+    # 如果当前进程为主进程，则执行目录创建和配置保存操作
     if coordinator.is_master():
+        # 确保实验目录存在，如果不存在则创建，exist_ok=True表示如果目录已存在则不抛出异常
         os.makedirs(exp_dir, exist_ok=True)
+
+        # 将训练配置保存到实验目录下，确保配置的可追溯性和可复现性
         save_training_config(cfg.to_dict(), exp_dir)
+
+    # 再次阻塞所有工作线程，确保所有进程都同步到同一状态
     coordinator.block_all()
 
     # == init logger, tensorboard & wandb ==
+    # 创建一个日志记录器，用于记录实验过程中的信息
     logger = create_logger(exp_dir)
+    # 记录实验目录的创建位置
     logger.info("Experiment directory created at %s", exp_dir)
+    # 记录训练配置信息，以便于调试和复现
     logger.info("Training configuration:\n %s", pformat(cfg.to_dict()))
+    # 如果当前进程是主进程，则创建TensorBoard写入器，用于记录训练过程中的度量信息
     if coordinator.is_master():
         tb_writer = create_tensorboard_writer(exp_dir)
+        # 如果配置中启用了wandb，则初始化wandb，用于实验跟踪和可视化
         if cfg.get("wandb", False):
             wandb.init(project="Open-Sora", name=exp_name, config=cfg.to_dict(), dir="./outputs/wandb")
 
     # == init ColossalAI booster ==
+    # 创建ColossalAI插件实例
+    # 参数:
+    #   plugin: 指定插件类型，默认为'zero2'
+    #   dtype: 指定数据类型
+    #   grad_clip: 梯度裁剪阈值，默认为0，表示不进行裁剪
+    #   sp_size: 并行切分的大小，默认为1，表示不进行切分
+    #   reduce_bucket_size_in_m: 梯度规约时的bucket大小，以MB为单位，默认为20MB
     plugin = create_colossalai_plugin(
         plugin=cfg.get("plugin", "zero2"),
         dtype=cfg_dtype,
@@ -80,7 +110,13 @@ def main():
         sp_size=cfg.get("sp_size", 1),
         reduce_bucket_size_in_m=cfg.get("reduce_bucket_size_in_m", 20),
     )
+
+    # 初始化Booster对象，用于管理和执行深度学习模型的训练过程
+    # 参数:
+    #   plugin: 指定使用的ColossalAI插件实例
     booster = Booster(plugin=plugin)
+
+    # 设置PyTorch的线程数为1，以减少多线程带来的开销
     torch.set_num_threads(1)
 
     # ======================================================
@@ -103,6 +139,7 @@ def main():
         process_group=get_data_parallel_group(),
         prefetch_factor=cfg.get("prefetch_factor", None),
     )
+    # dataloader 将数据转换为，模型可以处理的对象
     dataloader, sampler = prepare_dataloader(
         bucket_config=cfg.get("bucket_config", None),
         num_bucket_build_workers=cfg.get("num_bucket_build_workers", 1),
@@ -136,20 +173,24 @@ def main():
         vae_out_channels = cfg.get("vae_out_channels", 4)
 
     # == build diffusion model ==
+    # 构建并配置模型
     model = (
         build_module(
-            cfg.model, # STDiT3-XL/2 时间 和 空间注意力
+            cfg.model,  # 使用配置文件中的模型配置
             MODELS,
-            input_size=latent_size,
-            in_channels=vae_out_channels,
-            caption_channels=text_encoder_output_dim,
-            model_max_length=text_encoder_model_max_length,
-            enable_sequence_parallelism=cfg.get("sp_size", 1) > 1,
+            input_size=latent_size,  # 输入大小
+            in_channels=vae_out_channels,  # 输入通道数
+            caption_channels=text_encoder_output_dim,  # 字幕通道数，即文本编码器的输出维度
+            model_max_length=text_encoder_model_max_length,  # 模型最大长度，用于文本编码器
+            enable_sequence_parallelism=cfg.get("sp_size", 1) > 1,  # 是否启用序列并行ism，将一个长序列划分为多个子序列，分配到不同的计算单元（如 GPU 中的不同处理核心）上同时进行处理。
         )
-        .to(device, dtype)
-        .train()
+        .to(device, dtype)  # 将模型移动到指定设备和数据类型
+        .train()  # 将模型设置为训练模式
     )
+
+    # 获取模型的总参数量和可训练参数量
     model_numel, model_numel_trainable = get_model_numel(model)
+
     logger.info(
         "[Diffusion] Trainable model params: %s, Total model params: %s",
         format_numel_str(model_numel_trainable),
@@ -157,16 +198,33 @@ def main():
     )
 
     # == build ema for diffusion model ==
+    # 创建模型的深度拷贝，并将其转换为浮点类型，然后移动到指定设备上
+    # 这是为了在不改变原始模型的情况下，创建一个用于指数移动平均（EMA）的模型副本
+    # EMA 更新模型参数可使模型更快靠近最优解，减少参数振荡。
     ema = deepcopy(model).to(torch.float32).to(device)
+
+    # 禁用EMA模型的梯度计算，因为EMA模型不需要进行反向传播和参数更新
     requires_grad(ema, False)
+
+    # 记录EMA模型中每个参数的形状信息，这可能用于后续的参数更新或检查
     ema_shape_dict = record_model_param_shape(ema)
+
+    # 将EMA模型设置为评估模式，这是因为在训练过程中，EMA模型仅用于参数的指数移动平均计算，不参与实际的训练
     ema.eval()
+
+    # 使用当前模型的参数更新EMA模型的参数，初次调用时decay参数通常设置为0，以便直接复制当前模型的参数到EMA模型
     update_ema(ema, model, decay=0, sharded=False)
 
     # == setup loss function, build scheduler ==
     scheduler = build_module(cfg.scheduler, SCHEDULERS)
 
     # == setup optimizer ==
+    # 初始化优化器HybridAdam
+    # 使用filter过滤出模型中需要梯度更新的参数
+    # adamw_mode设置为True，启用AdamW模式
+    # 从配置字典cfg中获取学习率lr，如果未指定，则默认为1e-4
+    # 从配置字典cfg中获取权重衰减weight_decay，如果未指定，则默认为0
+    # 从配置字典cfg中获取Adam优化器中的eps值，如果未指定，则默认为1e-8
     optimizer = HybridAdam(
         filter(lambda p: p.requires_grad, model.parameters()),
         adamw_mode=True,
@@ -175,11 +233,18 @@ def main():
         eps=cfg.get("adam_eps", 1e-8),
     )
 
+    # 从配置字典cfg中获取warmup_steps值，如果没有指定，则默认为None
     warmup_steps = cfg.get("warmup_steps", None)
 
+    # 根据warmup_steps的值决定是否使用学习率预热策略
     if warmup_steps is None:
+        # 如果没有指定warmup_steps，则lr_scheduler设置为None
         lr_scheduler = None
     else:
+        # 如果指定了warmup_steps，则创建LinearWarmupLR学习率调度器
+        # 使用之前初始化的优化器optimizer
+        # warmup_steps参数从配置字典cfg中获取
+        # 优化器：对梯度下降方向和方式进行控制； 学习率调度和预热：对优化器的学习率进行控制，防止梯度消失和梯度爆炸
         lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=cfg.get("warmup_steps"))
 
     # == additional preparation ==
