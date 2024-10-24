@@ -105,15 +105,16 @@ class SpacedDiffusion(GaussianDiffusion):
 
     def _wrap_model(self, model):
         if isinstance(model, _WrappedModel):
+            # model 可以是 _WrappedModel 的实例：这意味着 model 已经被包装过，具有 _WrappedModel 类的特性。
             return model
-        return _WrappedModel(model, self.map_tensor, self.original_num_steps)
+        return _WrappedModel(model, self.map_tensor, self.original_num_steps) #这里就是给模型增加新参数
 
     def _scale_timesteps(self, t):
         # Scaling is done by the wrapped model.
         return t
 
 
-class _WrappedModel:
+class _WrappedModel: # 这意味着该类主要供模块或包内部使用，不建议外部代码直接引用或实例化。
     def __init__(self, model, map_tensor, original_num_steps):
         self.model = model
         self.map_tensor = map_tensor
@@ -121,6 +122,8 @@ class _WrappedModel:
         self.original_num_steps = original_num_steps
 
     def __call__(self, x, ts, **kwargs):
+        # 装饰器模式是一种结构型设计模式，允许你在不修改对象本身的情况下动态地给对象添加新的功能或责任
+        # 装饰器设计模型，就是为了增加新的参数 ts，在不修改model的前提下
         new_ts = self.map_tensor[ts].to(device=ts.device, dtype=ts.dtype)
         # if self.rescale_timesteps:
         #     new_ts = new_ts.float() * (1000.0 / self.original_num_steps)

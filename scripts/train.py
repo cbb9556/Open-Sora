@@ -128,23 +128,32 @@ def main():
     logger.info("Dataset contains %s samples.", len(dataset))
 
     # == build dataloader ==
+    # 初始化dataloader的参数字典
     dataloader_args = dict(
-        dataset=dataset,
-        batch_size=cfg.get("batch_size", None),
-        num_workers=cfg.get("num_workers", 4),
-        seed=cfg.get("seed", 1024),
-        shuffle=True,
-        drop_last=True,
-        pin_memory=True,
-        process_group=get_data_parallel_group(),
-        prefetch_factor=cfg.get("prefetch_factor", None),
+        dataset=dataset,  # 指定加载的数据集
+        batch_size=cfg.get("batch_size", None),  # 从配置中获取批次大小，如果没有指定则默认为None
+        num_workers=cfg.get("num_workers", 4),  # 从配置中获取工作线程数，如果没有指定则默认为4
+        seed=cfg.get("seed", 1024),  # 从配置中获取随机种子，如果没有指定则默认为1024
+        shuffle=True,  # 设置数据集在每个epoch中是否被打乱
+        drop_last=True,  # 如果数据集大小不能被批次大小整除，是否丢弃最后一批数据
+        pin_memory=True,  # 是否将数据加载到固定内存中，以加快数据传输到GPU的速度
+        process_group=get_data_parallel_group(),  # 指定用于数据并行处理的进程组
+        prefetch_factor=cfg.get("prefetch_factor", None),  # 从配置中获取预取因子，如果没有指定则默认为None
     )
+
     # dataloader 将数据转换为，模型可以处理的对象
+    # 准备数据加载器和采样器
+    # 该函数根据配置信息初始化数据加载器(dataloader)和采样器(sampler)
+    # 参数bucket_config用于指定桶配置，num_bucket_build_workers指定构建桶的工作者数量
+    # **dataloader_args允许传递额外的参数给数据加载器
     dataloader, sampler = prepare_dataloader(
         bucket_config=cfg.get("bucket_config", None),
         num_bucket_build_workers=cfg.get("num_bucket_build_workers", 1),
         **dataloader_args,
     )
+
+    # 计算每个epoch的步数
+    # 通过获取数据加载器的长度来确定每个epoch中包含的步数
     num_steps_per_epoch = len(dataloader)
 
     # ======================================================
@@ -152,11 +161,19 @@ def main():
     # ======================================================
     logger.info("Building models...")
     # == build text-encoder and vae ==
+    # 构建文本编码器模块
+    # 参数cfg.get("text_encoder", None)用于获取配置文件中text_encoder部分的配置，如果没有配置则默认为None
+    # MODELS是用于构建模型的模块集合
+    # device和dtype用于指定模型运行的设备和数据类型
     text_encoder = build_module(cfg.get("text_encoder", None), MODELS, device=device, dtype=dtype)
+
+    # 检查文本编码器是否成功构建
     if text_encoder is not None:
+        # 如果是，获取文本编码器的输出维度和最大长度限制
         text_encoder_output_dim = text_encoder.output_dim
         text_encoder_model_max_length = text_encoder.model_max_length
     else:
+        # 如果不是，从配置文件中获取文本编码器的输出维度和最大长度限制的默认值
         text_encoder_output_dim = cfg.get("text_encoder_output_dim", 4096)
         text_encoder_model_max_length = cfg.get("text_encoder_model_max_length", 300)
 
@@ -248,9 +265,16 @@ def main():
         lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=cfg.get("warmup_steps"))
 
     # == additional preparation ==
+    # 检查配置中是否启用了梯度检查点
+    # 通过计算时间换空间，减少内存消耗，不存储激活值，在需要使用的时候计算
     if cfg.get("grad_checkpoint", False):
+        # 如果启用了梯度检查点，则设置模型的梯度检查点，以减少训练期间的内存消耗
         set_grad_checkpoint(model)
+
+    # 检查配置中是否指定了掩码比例
+    # 图像处理: 在图像处理中，遮罩可以用于模拟缺失数据或进行数据增强，提高模型的鲁棒性。
     if cfg.get("mask_ratios", None) is not None:
+        # 如果指定了掩码比例，则创建一个掩码生成器实例
         mask_generator = MaskGenerator(cfg.mask_ratios)
 
     # =======================================================
@@ -260,25 +284,42 @@ def main():
     # == boosting ==
     # NOTE: we set dtype first to make initialization of model consistent with the dtype;
     # then reset it to the fp32 as we make diffusion scheduler in fp32
+    # 设置PyTorch的默认数据类型，以确保后续操作中的张量使用指定的精度
     torch.set_default_dtype(dtype)
+
+    # 使用booster对模型、优化器、学习率调度器和数据加载器进行增强
+    # 这一步可能包括混合精度训练、模型并行等高级特性，以提升训练效率和效果
     model, optimizer, _, dataloader, lr_scheduler = booster.boost(
         model=model,
         optimizer=optimizer,
         lr_scheduler=lr_scheduler,
         dataloader=dataloader,
     )
+
+    # 在增强过程后，重置PyTorch的默认数据类型为浮点型
+    # 这是为了确保在后续的操作中，张量默认使用较高的精度，以避免潜在的数值稳定性问题
     torch.set_default_dtype(torch.float)
+
     logger.info("Boosting model for distributed training")
 
     # == global variables ==
+    # 从配置字典中获取训练的总轮数，如果没有指定，则默认为1000轮
     cfg_epochs = cfg.get("epochs", 1000)
+
+    # 初始化训练相关的计数器和变量
     start_epoch = start_step = log_step = acc_step = 0
+    # 初始化累计损失为0.0，用于在训练过程中累计损失值
     running_loss = 0.0
+
+    # 记录训练的日志信息，包括总轮数和每轮的步数
     logger.info("Training for %s epochs with %s steps per epoch", cfg_epochs, num_steps_per_epoch)
 
     # == resume ==
+    # 检查配置中是否指定了加载模型检查点
     if cfg.get("load", None) is not None:
+        # 记录日志，表明正在加载检查点
         logger.info("Loading checkpoint")
+        # 调用 `load` 函数加载模型检查点
         ret = load(
             booster,
             cfg.load,
@@ -288,79 +329,117 @@ def main():
             lr_scheduler=lr_scheduler,
             sampler=None if cfg.get("start_from_scratch", False) else sampler,
         )
+        # 如果不是从头开始训练，从加载结果中获取起始的 epoch 和 step
         if not cfg.get("start_from_scratch", False):
             start_epoch, start_step = ret
+        # 记录日志，显示加载的检查点路径及其对应的 epoch 和 step
         logger.info("Loaded checkpoint %s at epoch %s step %s", cfg.load, start_epoch, start_step)
 
+    # 对模型进行分片处理
     model_sharding(ema)
 
     # =======================================================
     # 5. training loop
     # =======================================================
+    # 在训练循环开始时同步所有进程
     dist.barrier()
+
+    # 初始化一个字典来保存不同训练阶段的计时器
     timers = {}
+
+    # 定义计时器的键，表示训练过程中的不同阶段
     timer_keys = [
-        "move_data",
-        "encode",
-        "mask",
-        "diffusion",
-        "backward",
-        "update_ema",
-        "reduce_loss",
+        "move_data",  # 数据移动阶段
+        "encode",  # 编码阶段
+        "mask",  # 掩码阶段
+        "diffusion",  # 扩散阶段
+        "backward",  # 反向传播阶段
+        "update_ema",  # 更新指数移动平均阶段
+        "reduce_loss",  # 损失减少阶段
     ]
+
+    # 遍历每个计时器键，如果 record_time 为 True，则创建一个 Timer 对象；否则，创建一个空上下文
     for key in timer_keys:
         if record_time:
-            timers[key] = Timer(key, coordinator=coordinator)
+            timers[key] = Timer(key, coordinator=coordinator)  # 创建 Timer 对象
         else:
-            timers[key] = nullcontext()
+            timers[key] = nullcontext()  # 创建空上下文
+
+    # 遍历从 start_epoch 到 cfg_epochs 的每个 epoch
     for epoch in range(start_epoch, cfg_epochs):
-        # == set dataloader to new epoch ==
+        # 将数据加载器设置为新的 epoch
         sampler.set_epoch(epoch)
+
+        # 创建数据加载器的迭代器
         dataloader_iter = iter(dataloader)
+
+        # 记录当前 epoch 的开始
         logger.info("Beginning epoch %s...", epoch)
 
         # == training loop in an epoch ==
+        # 使用tqdm库创建一个进度条，用于可视化地跟踪训练或评估的数据加载进度
+        # 参数desc用于描述进度条的前缀信息，在这里是当前epoch的标识
+        # 参数disable用于控制是否显示进度条，只有在coordinator.is_master()为True时才显示，确保只有一个主进程输出进度信息
+        # 参数initial设置进度条的起始值，这里使用start_step，表示从某个中间步骤开始
+        # 参数total指定进度条的总长度，即每个epoch中预计的总步骤数
         with tqdm(
-            enumerate(dataloader_iter, start=start_step),
-            desc=f"Epoch {epoch}",
-            disable=not coordinator.is_master(),
-            initial=start_step,
-            total=num_steps_per_epoch,
+                enumerate(dataloader_iter, start=start_step),
+                desc=f"Epoch {epoch}",
+                disable=not coordinator.is_master(),
+                initial=start_step,
+                total=num_steps_per_epoch,
         ) as pbar:
+            # 遍历每个步骤和对应的batch数据，pbar是带有进度信息的迭代器
             for step, batch in pbar:
                 timer_list = []
-                with timers["move_data"] as move_data_t:
+                # 使用timers上下文管理器来测量数据移动的时间
+                with timers["move_data"] as move_data_t: # with语句确保这些资源在使用完毕后能够被正确关闭或释放。
+                    # 将batch字典中的"video"数据移动到指定的设备上，并转换为指定的数据类型
                     x = batch.pop("video").to(device, dtype)  # [B, C, T, H, W]
+                    # 从batch字典中移除并获取"text"数据
                     y = batch.pop("text")
+                # 如果需要记录时间，则将数据移动时间添加到timer_list列表中
                 if record_time:
                     timer_list.append(move_data_t)
 
                 # == visual and text encoding ==
+                # 使用上下文管理器来计时编码过程
                 with timers["encode"] as encode_t:
                     with torch.no_grad():
-                        # Prepare visual inputs
+                        # 如果配置中设置了加载视频特征，则将输入张量，移动到特定设备并转换数据类型
                         if cfg.get("load_video_features", False):
-                            x = x.to(device, dtype)
+                            x = x.to(device, dtype) # 意味着预处理的视频特征已经准备好，可以直接使用。，不用vae编码
+                        # 否则，使用变分自编码器（VAE）对输入进行编码
                         else:
                             x = vae.encode(x)  # [B, C, T, H/P, W/P]
-                        # Prepare text inputs
+                        # 如果配置中设置了加载文本特征
                         if cfg.get("load_text_features", False):
+                            # 准备模型参数，包括文本输入和可能的掩码
                             model_args = {"y": y.to(device, dtype)}
                             mask = batch.pop("mask")
                             if isinstance(mask, torch.Tensor):
                                 mask = mask.to(device, dtype)
                             model_args["mask"] = mask
+                        # 否则，使用文本编码器对文本进行编码并作为模型参数
                         else:
                             model_args = text_encoder.encode(y)
+
+                # 如果需要记录时间
                 if record_time:
+                    # 将编码过程的时间记录添加到列表中
                     timer_list.append(encode_t)
 
                 # == mask ==
+                # 使用上下文管理器记录生成mask的过程时间
                 with timers["mask"] as mask_t:
+                    # 初始化mask为None，根据配置决定是否生成mask
                     mask = None
+                    # 检查配置中是否提供了mask比率
                     if cfg.get("mask_ratios", None) is not None:
+                        # 根据配置生成mask，并将其作为模型的输入之一
                         mask = mask_generator.get_masks(x)
                         model_args["x_mask"] = mask
+                # 如果需要记录时间，则将生成mask的时间添加到时间列表中
                 if record_time:
                     timer_list.append(mask_t)
 
@@ -371,7 +450,7 @@ def main():
 
                 # == diffusion loss computation ==
                 with timers["diffusion"] as loss_t:
-                    loss_dict = scheduler.training_losses(model, x, model_args, mask=mask)
+                    loss_dict = scheduler.training_losses(model, x, model_args, mask=mask) # x，y，mask的tensor都在model_args中； 计算loss需要 生成的视频帧 和 原始帧 x，计算
                 if record_time:
                     timer_list.append(loss_t)
 

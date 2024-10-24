@@ -23,7 +23,7 @@ def get_seed_worker(seed):
     return seed_worker
 
 
-def prepare_dataloader(
+def prepare_dataloader( #对不同的数据集类型，返回不同的DataLoader和Sampler
     dataset,
     batch_size=None,
     shuffle=False,
@@ -38,8 +38,8 @@ def prepare_dataloader(
     **kwargs,
 ):
     _kwargs = kwargs.copy()
-    if isinstance(dataset, VariableVideoTextDataset):
-        batch_sampler = VariableVideoBatchSampler(
+    if isinstance(dataset, VariableVideoTextDataset): #不同是视频和文档对齐的数据集
+        batch_sampler = VariableVideoBatchSampler( #视频批量采样器
             dataset,
             bucket_config,
             num_replicas=process_group.size(),

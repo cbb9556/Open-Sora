@@ -8,7 +8,7 @@ from . import gaussian_diffusion as gd
 from .respace import SpacedDiffusion, space_timesteps
 from .speed import SpeeDiffusion
 
-
+# 在cfg配置中，声明注册， 就是 stage1.py代码
 @SCHEDULERS.register_module("iddpm")
 class IDDPM(SpacedDiffusion):
     def __init__(
@@ -25,7 +25,8 @@ class IDDPM(SpacedDiffusion):
         cfg_scale=4.0,
         cfg_channel=None,
     ):
-        betas = gd.get_named_beta_schedule(noise_schedule, diffusion_steps)
+        betas = gd.get_named_beta_schedule(noise_schedule, diffusion_steps) #加噪的 参数
+
         if use_kl:
             loss_type = gd.LossType.RESCALED_KL
         elif rescale_learned_sigmas:

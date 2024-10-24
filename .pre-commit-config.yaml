@@ -1,31 +1,45 @@
+# 定义需要从外部仓库安装的代码库，以便在项目中使用它们的钩子（hook）
 repos:
 
+  # autoflake 仓库配置，用于自动移除未使用的导入和变量
   - repo: https://github.com/PyCQA/autoflake
     rev: v2.2.1
     hooks:
+      # 配置 autoflake 钩子，使其在发现未使用的导入和变量时自动移除它们
       - id: autoflake
         name: autoflake (python)
         args: ['--in-place']
 
+  # isort 仓库配置，用于自动排序导入语句
   - repo: https://github.com/pycqa/isort
     rev: 5.12.0
     hooks:
+      # 配置 isort 钩子，使其自动排序所有的导入语句
       - id: isort
         name: sort all imports (python)
 
+  # black 仓库配置，用于自动格式化代码
   - repo: https://github.com/psf/black-pre-commit-mirror
     rev: 23.9.1
     hooks:
-    - id: black
-      name: black formatter
+      # 配置 black 钩子，使其按照 black 的格式标准自动格式化代码
+      - id: black
+        name: black formatter
 
+  # pre-commit-hooks 仓库配置，包含多个用于检查和修正代码的钩子
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.3.0
     hooks:
+      # 检查 YAML 文件的正确性
       - id: check-yaml
+      # 检查代码中是否有合并冲突的标记
       - id: check-merge-conflict
+      # 检查代码中是否有大小写冲突的文件名
       - id: check-case-conflict
+      # 移除代码中多余的空格
       - id: trailing-whitespace
+      # 在文件末尾添加换行符
       - id: end-of-file-fixer
+      # 统一代码的换行符为 LF
       - id: mixed-line-ending
         args: ['--fix=lf']

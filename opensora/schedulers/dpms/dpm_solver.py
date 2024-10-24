@@ -28,11 +28,39 @@ from tqdm import tqdm
 
 
 def _warmup_beta(beta_start, beta_end, num_diffusion_timesteps, warmup_frac):
+    """
+    生成一个beta值序列，用于扩散模型的训练过程。
+
+    该函数的目的是为了在扩散模型的初期阶段，逐步增加beta值（噪声规模），以帮助模型更好地学习数据的结构。
+
+    参数:
+    - beta_start: 初始的beta值，通常较小。
+    - beta_end: 最终的beta值，保持不变，直到warmup阶段结束。
+    - num_diffusion_timesteps: 扩散过程的总时间步数。
+    - warmup_frac: warmup阶段占总时间步数的比例。
+
+    返回:
+    - betas: 一个包含每个时间步beta值的数组。
+    """
+
+    # 初始化所有时间步的beta值为最终的beta值, np.ones声明长度为num_diffusion_timesteps的[1]数组
     betas = beta_end * np.ones(num_diffusion_timesteps, dtype=np.float64)
+
+    # 计算warmup阶段的时间步数
     warmup_time = int(num_diffusion_timesteps * warmup_frac)
+
+    # 在warmup阶段内，beta值从初始值逐步线性增加到最终值
     betas[:warmup_time] = np.linspace(beta_start, beta_end, warmup_time, dtype=np.float64)
+
+    # 返回包含所有时间步beta值的数组
     return betas
 
+def test_warmup_epochs():
+    beta_start = 10e-4
+    beta_end = 0.99
+    num_diffusion_timesteps = 1000
+    warmup_frac = 0.2
+    print(_warmup_beta(beta_start, beta_end, num_diffusion_timesteps, warmup_frac))
 
 def get_beta_schedule(beta_schedule, *, beta_start, beta_end, num_diffusion_timesteps):
     """

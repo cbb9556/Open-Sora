@@ -25,38 +25,39 @@ def mean_flat(tensor: torch.Tensor, mask=None):
     Take the mean over all non-batch dimensions.
     """
     if mask is None:
-        return tensor.mean(dim=list(range(1, len(tensor.shape))))
+        return tensor.mean(dim=list(range(1, len(tensor.shape)))) # 假设有3批数据， 每批数据的所有数值sum之后求平均
     else:
-        assert tensor.dim() == 5
-        assert tensor.shape[2] == mask.shape[1]
-        tensor = rearrange(tensor, "b c t h w -> b t (c h w)")
-        denom = mask.sum(dim=1) * tensor.shape[-1]
-        loss = (tensor * mask.unsqueeze(2)).sum(dim=1).sum(dim=1) / denom
+        assert tensor.dim() == 5 # 必须是 b t c h w
+        assert tensor.shape[2] == mask.shape[1] # 对t进行 mask，有些时间维度mask住不进行 sum求和
+        tensor = rearrange(tensor, "b c t h w -> b t (c h w)") # 将最后 h w合并 变成一个矩阵，然后将 C个信道也合并，也就是一张图片的 3个信道 并排放在一个矩阵中
+        denom = mask.sum(dim=1) * tensor.shape[-1] # [c*h*w, c*h*w] 分母
+        # 最终的损失值是通过对有效时间步的数据求和并归一化得到的。每批数据一个loss值，b = 2，则有 2个loss
+        # mask = [[1,0],[0,1]], unsqueeze = [[1],[0]],[[0],[1]]], 乘以 tensor会自动广播为[[1,1,...,1],[0,0...0]]，也就是最后，只考虑 tensor的第一行和最后一行
+        loss = (tensor * mask.unsqueeze(2)).sum(dim=1).sum(dim=1) / denom # 就是 求和只剩下 [sum/24,sum/24]
         return loss
-
 
 class ModelMeanType(enum.Enum):
     """
-    Which type of output the model predicts.
+    定义模型预测的输出类型。
+    这个枚举类用于指定模型预测的目标是哪种类型的变量。
     """
-
-    PREVIOUS_X = enum.auto()  # the model predicts x_{t-1}
-    START_X = enum.auto()  # the model predicts x_0
-    EPSILON = enum.auto()  # the model predicts epsilon
-
+    PREVIOUS_X = enum.auto()  # 模型预测的是前一个时刻的状态 x_{t-1}   自动赋值为 1
+    START_X = enum.auto()  # 模型预测的是初始状态 x_0 自动赋值为 2
+    EPSILON = enum.auto()  # 模型预测的是噪声 epsilon 自动赋值为  3
 
 class ModelVarType(enum.Enum):
     """
-    What is used as the model's output variance.
-    The LEARNED_RANGE option has been added to allow the model to predict
-    values between FIXED_SMALL and FIXED_LARGE, making its job easier.
+    定义模型输出方差的类型。
+    包含四种类型：
+    - LEARNED：模型方差是通过学习得到的。
+    - FIXED_SMALL：模型方差设定为较小的固定值。
+    - FIXED_LARGE：模型方差设定为较大的固定值。
+    - LEARNED_RANGE：模型学习在一个范围内预测方差，介于FIXED_SMALL和FIXED_LARGE之间，以简化模型的任务。
     """
-
-    LEARNED = enum.auto()
+    LEARNED = enum.auto() # 自动赋值 1
     FIXED_SMALL = enum.auto()
     FIXED_LARGE = enum.auto()
     LEARNED_RANGE = enum.auto()
-
 
 class LossType(enum.Enum):
     MSE = enum.auto()  # use raw MSE loss (and KL when learning variances)
@@ -68,13 +69,24 @@ class LossType(enum.Enum):
         return self == LossType.KL or self == LossType.RESCALED_KL
 
 
+
 def _warmup_beta(beta_start: float, beta_end: float, num_diffusion_timesteps: int, warmup_frac: float) -> torch.Tensor:
-    betas = beta_end * torch.ones(num_diffusion_timesteps, dtype=torch.float64)
-    warmup_time = int(num_diffusion_timesteps * warmup_frac)
-    betas[:warmup_time] = torch.linspace(beta_start, beta_end, warmup_time, dtype=torch.float64)
+    '''
+    设置加噪参数的 warmup，起始到结束
+    Args:
+        beta_start:
+        beta_end:
+        num_diffusion_timesteps:
+        warmup_frac:
+
+    Returns:
+    '''
+    betas = beta_end * torch.ones(num_diffusion_timesteps, dtype=torch.float64) # 初始化 betas为 1，全部的时间步都为1
+    warmup_time = int(num_diffusion_timesteps * warmup_frac) # 需要warmup的步数
+    betas[:warmup_time] = torch.linspace(beta_start, beta_end, warmup_time, dtype=torch.float64) # 在warmup阶段内，线性变化beta值从beta_start到beta_end
     return betas
 
-
+# 不同的 加噪调度器，其betas的变化值，变化规律不同
 def get_beta_schedule(
     beta_schedule: str, *, beta_start: float, beta_end: float, num_diffusion_timesteps: int
 ) -> torch.Tensor:
@@ -184,20 +196,29 @@ class GaussianDiffusion:
         self.loss_type = loss_type
 
         # Use float64 for accuracy.
-        self.betas = betas.to(self.device)
+        self.betas = betas.to(self.device) #从 iddpm调度器给出的随时间变化的加噪强度 a 1-D numpy array of betas for each diffusion timestep, starting at T and going to 1
         assert len(self.betas.shape) == 1, "betas must be 1-D"
-        assert (self.betas > 0).all() and (self.betas <= 1).all()
+        assert (self.betas > 0).all() and (self.betas <= 1).all() # beta值必须 0-1之间
 
-        self.num_timesteps = int(betas.shape[0])
+        self.num_timesteps = int(betas.shape[0]) #时间步，就是加噪的步数
 
-        alphas = 1.0 - self.betas
-        self.alphas_cumprod = torch.cumprod(alphas, axis=0)
-        self.alphas_cumprod_prev = torch.cat([torch.tensor([1.0], device=self.device), self.alphas_cumprod[:-1]])
+        alphas = 1.0 - self.betas # 转换为alpha
+        # 计算alphas的累积乘积，这有助于在后续过程中高效地获取时间步长的累积效应
+        self.alphas_cumprod = torch.cumprod(alphas, axis=0) # 对于[a1,a2,a3....] 返回[a1,a1*a2,a1*a2*a3,...]
+
+        # 构建一个新数组，用于存储每个时间步长之前的所有alphas累积乘积，起始值为1.0，末尾去除最后一个累积乘积
+        # 这是为了在计算过程中能够方便地访问前一个时间步长的累积乘积
+        self.alphas_cumprod_prev = torch.cat([torch.tensor([1.0], device=self.device), self.alphas_cumprod[:-1]]) # 去除最后一个位置，第一个位置增加 1.0
+
+        # 构建一个新数组，用于存储每个时间步长之后的所有alphas累积乘积，起始值去除第一个累积乘积，末尾添加0.0
+        # 这是为了在计算过程中能够方便地访问下一个时间步长的累积乘积
         self.alphas_cumprod_next = torch.cat([self.alphas_cumprod[1:], torch.tensor([0.0], device=self.device)])
+
+        # 确保构建的数组形状与预期的时间步长数目匹配，以验证数组构建的正确性
         assert self.alphas_cumprod_prev.shape == (self.num_timesteps,)
 
         # calculations for diffusion q(x_t | x_{t-1}) and others
-        self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
+        self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod) # 根号下的 α
         self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1.0 - self.alphas_cumprod)
         self.log_one_minus_alphas_cumprod = torch.log(1.0 - self.alphas_cumprod)
         self.sqrt_recip_alphas_cumprod = torch.sqrt(1.0 / self.alphas_cumprod)
@@ -710,6 +731,7 @@ class GaussianDiffusion:
                 yield out
                 img = out["sample"]
 
+    # vlb loss函数的计算， L0 使用 NLL， 其他Lt 使用 KL
     def _vb_terms_bpd(self, model, x_start, x_t, t, clip_denoised=True, model_kwargs=None, mask=None):
         """
         Get a term for the variational lower-bound.
@@ -789,6 +811,7 @@ class GaussianDiffusion:
             if self.loss_type == LossType.RESCALED_KL:
                 terms["loss"] *= self.num_timesteps
         elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE:
+            # 模型的输出 噪声
             model_output = model(x_t, t, **model_kwargs)
 
             if self.model_var_type in [
@@ -797,7 +820,7 @@ class GaussianDiffusion:
             ]:
                 B, C = x_t.shape[:2]
                 assert model_output.shape == (B, C * 2, *x_t.shape[2:])
-                model_output, model_var_values = torch.split(model_output, C, dim=1)
+                model_output, model_var_values = torch.split(model_output, C, dim=1) # 方差 和 输出
                 # Learn the variance using the variational bound, but don't let
                 # it affect our mean prediction.
                 frozen_out = torch.cat([model_output.detach(), model_var_values], dim=1)
@@ -814,18 +837,25 @@ class GaussianDiffusion:
                     # Without a factor of 1/1000, the VB term hurts the MSE term.
                     terms["vb"] *= self.num_timesteps / 1000.0
 
+            # 这样做是为了根据不同的模型平均类型选择合适的目标值。不同的平均类型代表了在扩散模型或类似模型中对数据的不同处理方式：
+            # ModelMeanType.PREVIOUS_X: 表示目标值是前一个时间步的预测值。这通常用于模型训练过程中，通过预测前一个时间步的状态来逐步恢复原始数据。
+            # ModelMeanType.START_X: 表示目标值是初始状态的预测值。这通常用于直接预测原始数据，而不是通过逐步恢复。
+            # ModelMeanType.EPSILON: 表示目标值是噪声。这通常用于模型训练过程中，通过预测加在数据上的噪声来逐步恢复原始数据。
+            # 通过这种方式，可以根据具体的模型需求和训练策略选择最合适的目标值，从而提高模型的性能和准确性。
             target = {
                 ModelMeanType.PREVIOUS_X: self.q_posterior_mean_variance(x_start=x_start, x_t=x_t, t=t)[0],
                 ModelMeanType.START_X: x_start,
                 ModelMeanType.EPSILON: noise,
-            }[self.model_mean_type]
+            }[self.model_mean_type] #选出 字典中的一个 类型作为目标值
             assert model_output.shape == target.shape == x_start.shape
             if weights is None:
-                terms["mse"] = mean_flat((target - model_output) ** 2, mask=mask)
+                terms["mse"] = mean_flat((target - model_output) ** 2, mask=mask) # mask的位置 不用计算 loss，这里mask只是用于增强？？
             else:
                 weight = _extract_into_tensor(weights, t, target.shape)
                 terms["mse"] = mean_flat(weight * (target - model_output) ** 2, mask=mask)
             if "vb" in terms:
+                # iddpm loss 需要 加上 lvb损失， 其中 lvb损失由 L0 + L1 + L2...,
+                # L0 为 nll， L1-Lx 为 kl
                 terms["loss"] = terms["mse"] + terms["vb"]
             else:
                 terms["loss"] = terms["mse"]
@@ -913,7 +943,9 @@ def _extract_into_tensor(arr: torch.Tensor, timesteps: torch.Tensor, broadcast_s
                             dimension equal to the length of timesteps.
     :return: a tensor of shape [batch_size, 1, ...] where the shape has K dims.
     """
+    # 将arr数组转换到与timesteps相同的数据设备上，然后按照timesteps的索引进行选择，并将结果转换为浮点数类型
     res = arr.to(timesteps.device)[timesteps].float()
+
     while len(res.shape) < len(broadcast_shape):
         res = res[..., None]
     return res + torch.zeros(broadcast_shape, device=timesteps.device)

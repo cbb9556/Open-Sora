@@ -6,7 +6,41 @@
 > mmd.emoticon=`tree`
 
 
-## train\.py
+## 整体逻辑
+
+### train\.py
+
+#### cfg = parse\_configs\(training=True\)
+
+##### def parse\_configs\(training=False\):
+
+###### def parse\_args\(training=False\):
+
+####### parser\.add\_argument
+
+####### parser\.parse\_args\(\)
+
+###### cfg = read\_config\(args\.config\)
+
+###### cfg = merge\_args\(cfg, args, training\)
+
+###### return cfg
+
+####     record\_time = cfg\.get\("record\_time", False\)
+
+##### "record\_time" = False
+
+## 训练过程 train\.py
+
+### 噪声调度 iddpm
+
+####     scheduler = build\_module\(cfg\.scheduler, SCHEDULERS\)
+
+### loss函数，通过调度器调用
+
+####                     loss\_dict = scheduler\.training\_losses\(model, x, model\_args, mask=mask\) <br/>\# x，y，mask的tensor都在model\_args中； 计算loss需要 生成的视频帧 和 原始帧 x，计算
+
+## 推理过程 inference\.py
 
 ## 开始训练模型，执行readme\.md 的右边命令
 

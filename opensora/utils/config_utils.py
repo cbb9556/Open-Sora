@@ -7,7 +7,7 @@ from mmengine.config import Config
 
 
 def parse_args(training=False):
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser() # 创建ArgumentParser对象，用于处理命令行参数。此对象可以添加参数定义，并自动解析从命令行接收到的参数。
 
     # model config
     parser.add_argument("config", help="model config file path")
