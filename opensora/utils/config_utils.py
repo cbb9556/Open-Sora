@@ -126,9 +126,26 @@ def read_config(config_path):
 
 
 def parse_configs(training=False):
+    """
+    解析配置信息。
+
+    根据是否处于训练模式，解析命令行参数，读取配置文件（stage2.py），并合并参数与配置。
+
+    参数:
+    training (bool): 是否处于训练模式。默认为False。
+
+    返回:
+    cfg: 合并了命令行参数与配置文件的配置对象。
+    """
+    # 解析命令行参数
     args = parse_args(training)
+
+    # 读取配置文件
     cfg = read_config(args.config)
+
+    # 合并命令行参数与配置文件内容
     cfg = merge_args(cfg, args, training)
+
     return cfg
 
 

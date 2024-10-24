@@ -124,7 +124,7 @@ def main():
     # ======================================================
     logger.info("Building dataset...")
     # == build dataset ==
-    dataset = build_module(cfg.dataset, DATASETS)
+    dataset = build_module(cfg.dataset, DATASETS) # dataset在 stage1 是 "VariableVideoTextDataset"
     logger.info("Dataset contains %s samples.", len(dataset))
 
     # == build dataloader ==
