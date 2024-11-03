@@ -26,7 +26,9 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-
+# 创造一个加噪的 beta值序列，这个序列中有warmup阶段，这个阶段从下标0到 warmup_frac * num_diffusion_timesteps，
+# 这个阶段的值，从beta_start 逐步增加到beta_end。
+# 测试见ipynb
 def _warmup_beta(beta_start, beta_end, num_diffusion_timesteps, warmup_frac):
     """
     生成一个beta值序列，用于扩散模型的训练过程。
@@ -55,13 +57,7 @@ def _warmup_beta(beta_start, beta_end, num_diffusion_timesteps, warmup_frac):
     # 返回包含所有时间步beta值的数组
     return betas
 
-def test_warmup_epochs():
-    beta_start = 10e-4
-    beta_end = 0.99
-    num_diffusion_timesteps = 1000
-    warmup_frac = 0.2
-    print(_warmup_beta(beta_start, beta_end, num_diffusion_timesteps, warmup_frac))
-
+# 使用warmup函数 或者 linspace函数，获取不同的beta序列
 def get_beta_schedule(beta_schedule, *, beta_start, beta_end, num_diffusion_timesteps):
     """
     This is the deprecated API for creating beta schedules.

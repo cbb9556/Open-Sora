@@ -262,7 +262,7 @@ def main():
         # 使用之前初始化的优化器optimizer
         # warmup_steps参数从配置字典cfg中获取
         # 优化器：对梯度下降方向和方式进行控制； 学习率调度和预热：对优化器的学习率进行控制，防止梯度消失和梯度爆炸
-        lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=cfg.get("warmup_steps"))
+        lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=cfg.get("warmup_steps")) #使用torch函数库
 
     # == additional preparation ==
     # 检查配置中是否启用了梯度检查点
@@ -275,7 +275,7 @@ def main():
     # 图像处理: 在图像处理中，遮罩可以用于模拟缺失数据或进行数据增强，提高模型的鲁棒性。
     if cfg.get("mask_ratios", None) is not None:
         # 如果指定了掩码比例，则创建一个掩码生成器实例
-        mask_generator = MaskGenerator(cfg.mask_ratios)
+        mask_generator = MaskGenerator(cfg.mask_ratios) #不同的数据不同的mask比例
 
     # =======================================================
     # 4. distributed training preparation with colossalai
